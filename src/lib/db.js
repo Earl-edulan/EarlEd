@@ -31,20 +31,6 @@ export async function createSeminar(seminar) {
   return { data, error };
 }
 
-export function addSeminarStatus(seminars) {
-  const now = new Date();
-
-  return seminars.map(seminar => {
-    const start = new Date(seminar.start_time);
-    const end = new Date(seminar.end_time);
-
-    let status = "Upcoming";
-    if (now >= start && now <= end) status = "Ongoing";
-    if (now > end) status = "Finished";
-
-    return { ...seminar, status };
-  });
-}
 
 
 export async function upsertSeminar(seminar) {
@@ -58,6 +44,8 @@ export async function upsertSeminar(seminar) {
     date: seminar.date || null,
     start_datetime: seminar.start_datetime || null,
     end_datetime: seminar.end_datetime || null,
+    start_time: seminar.start_time || null,
+    end_time: seminar.end_time || null,
     questions: seminar.questions || null,
     metadata: seminar.metadata || null,
     certificate_template_url: seminar.certificate_template_url || null,
@@ -240,6 +228,11 @@ export async function saveAllSeminars(seminars) {
     speaker: s.speaker || null,
     capacity: s.participants ? parseInt(s.participants, 10) : s.capacity || null,
     date: s.date || null,
+    start_datetime: s.start_datetime || null,
+    end_datetime: s.end_datetime || null,
+    start_time: s.start_time || null,
+    end_time: s.end_time || null,
+    certificate_template_url: s.certificate_template_url || null,
     questions: s.questions || null,
     metadata: s.metadata || null,
   }));
