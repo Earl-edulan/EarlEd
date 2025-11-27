@@ -4,6 +4,8 @@
   import "../App.css";
   import { fetchSeminars, createSeminar as dbCreateSeminar, upsertSeminar as dbUpsertSeminar, deleteSeminar as dbDeleteSeminar, fetchJoinedParticipants, saveJoinedParticipant, saveEvaluation, saveAllSeminars } from "../lib/db";
   import HamburgerToggle from './HamburgerToggle';
+  import { useNavigate } from "react-router-dom";
+
 
   function Admin({ onLogout }) {
     const [activeTab, setActiveTab] = useState("dashboard");
@@ -18,6 +20,8 @@
     const [speaker, setSpeaker] = useState("");
     const [participants, setParticipants] = useState("");
     const [date, setDate] = useState("");
+    const navigate = useNavigate();
+
 
     // Load seminars from Supabase on mount, fall back to localStorage if unavailable
     useEffect(() => {
@@ -576,6 +580,7 @@
                         cursor: "pointer",
                         position: "relative"
                       }}
+                                                
                       onMouseOver={(e) => {
                         e.currentTarget.style.boxShadow = "0 8px 24px rgba(196, 30, 58, 0.15)";
                         e.currentTarget.style.transform = "translateY(-4px)";
@@ -599,6 +604,21 @@
                         fontWeight: "600"
                       }}>
                         {getJoinedCount(s)}/{s.participants} joined
+                        <button
+                        onClick={() => navigate(`/attendance?seminar=${s.id}`)}
+                        style={{
+                          marginTop: "1rem",
+                          padding: "0.5rem 1rem",
+                          background: "#007bff",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "8px",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Open Scanner for Attendance
+                      </button>
+
                       </div>
 
                       <h3 style={{

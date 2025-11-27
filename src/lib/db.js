@@ -57,34 +57,105 @@ export async function upsertSeminar(seminar) {
 }
 
 export async function recordTimeIn(seminarId, participant_email) {
-  // upsert: if record doesn't exist create with time_in; if exists and time_out null, keep time_in
-  const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('attendance')
-    .upsert({ seminar_id: seminarId, participant_email, time_in: now }, { onConflict: ['seminar_id', 'participant_email'] })
-    .select();
-  return { data, error };
+  try {
+    // check existing row
+    const { data: existing, error: selErr } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('seminar_id', seminarId)
+      .eq('participant_email', participant_email)
+      .maybeSingle();
+
+    if (selErr) {
+      console.error('recordTimeIn select error', selErr);
+      return { data: null, error: selErr };
+    }
+
+    if (!existing) {
+      // no attendance -> insert time_in
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from('attendance')
+        .insert({ seminar_id: seminarId, participant_email, time_in: now })
+        .select();
+      return { data, error };
+    } else {
+      // row exists: if time_in empty, update; otherwise return existing
+      if (!existing.time_in) {
+        const now = new Date().toISOString();
+        const { data, error } = await supabase
+          .from('attendance')
+          .update({ time_in: now })
+          .eq('id', existing.id)
+          .select();
+        return { data, error };
+      }
+      // already has time_in
+      return { data: existing, error: null };
+    }
+  } catch (err) {
+    console.error('recordTimeIn unexpected', err);
+    return { data: null, error: err };
+  }
 }
 
+// Record time-out: updates existing row's time_out
 export async function recordTimeOut(seminarId, participant_email) {
-  const now = new Date().toISOString();
-  // update time_out for the existing attendance row
-  const { data, error } = await supabase
-    .from('attendance')
-    .update({ time_out: now })
-    .eq('seminar_id', seminarId)
-    .eq('participant_email', participant_email)
-    .select();
-  return { data, error };
+  try {
+    // find the attendance row
+    const { data: existing, error: selErr } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('seminar_id', seminarId)
+      .eq('participant_email', participant_email)
+      .maybeSingle();
+
+    if (selErr) {
+      console.error('recordTimeOut select error', selErr);
+      return { data: null, error: selErr };
+    }
+
+    if (!existing) {
+      // no row: insert a row with time_out (and null time_in)
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from('attendance')
+        .insert({ seminar_id: seminarId, participant_email, time_out: now })
+        .select();
+      return { data, error };
+    } else {
+      // if not yet time_out -> update; otherwise return existing
+      if (!existing.time_out) {
+        const now = new Date().toISOString();
+        const { data, error } = await supabase
+          .from('attendance')
+          .update({ time_out: now })
+          .eq('id', existing.id)
+          .select();
+        return { data, error };
+      }
+      // already has time_out
+      return { data: existing, error: null };
+    }
+  } catch (err) {
+    console.error('recordTimeOut unexpected', err);
+    return { data: null, error: err };
+  }
 }
 
+// Fetch attendance list for a seminar
 export async function fetchAttendance(seminarId) {
-  const { data, error } = await supabase
-    .from('attendance')
-    .select('*')
-    .eq('seminar_id', seminarId)
-    .order('created_at', { ascending: true });
-  return { data, error };
+  try {
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('seminar_id', seminarId)
+      .order('created_at', { ascending: true });
+    return { data, error };
+  } catch (err) {
+    console.error('fetchAttendance unexpected', err);
+    return { data: null, error: err };
+  }
 }
 
 export async function deleteSeminar(id) {
