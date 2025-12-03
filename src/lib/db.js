@@ -113,16 +113,32 @@ export async function upsertSeminar(seminar) {
 
 export async function recordTimeIn(seminarId, participant_email) {
   try {
+    const now = new Date().toISOString();
+    const payload = { seminar: seminarId, participant_email, time_in: now };
+    
+    // Try backend first
+    try {
+      const response = await fetch(`${API_BASE_URL}/attendance/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return { data: [data], error: null };
+      }
+    } catch (err) {
+      console.warn('Backend attendance failed:', err);
+    }
+    
+    // Fallback to local
     const attendance = readLocal('attendance');
     let row = attendance.find(r => r.seminar_id === seminarId && r.participant_email === participant_email);
-    const now = new Date().toISOString();
     if (!row) {
       row = { id: Date.now(), seminar_id: seminarId, participant_email, time_in: now, time_out: null, created_at: now };
       attendance.push(row);
       writeLocal('attendance', attendance);
-      return { data: [row], error: null };
-    }
-    if (!row.time_in) {
+    } else if (!row.time_in) {
       row.time_in = now;
       writeLocal('attendance', attendance);
     }
@@ -132,19 +148,34 @@ export async function recordTimeIn(seminarId, participant_email) {
   }
 }
 
-// Record time-out: updates existing row's time_out
 export async function recordTimeOut(seminarId, participant_email) {
   try {
+    const now = new Date().toISOString();
+    const payload = { seminar: seminarId, participant_email, time_out: now };
+    
+    // Try backend first
+    try {
+      const response = await fetch(`${API_BASE_URL}/attendance/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return { data: [data], error: null };
+      }
+    } catch (err) {
+      console.warn('Backend attendance failed:', err);
+    }
+    
+    // Fallback to local
     const attendance = readLocal('attendance');
     let row = attendance.find(r => r.seminar_id === seminarId && r.participant_email === participant_email);
-    const now = new Date().toISOString();
     if (!row) {
       row = { id: Date.now(), seminar_id: seminarId, participant_email, time_in: null, time_out: now, created_at: now };
       attendance.push(row);
       writeLocal('attendance', attendance);
-      return { data: [row], error: null };
-    }
-    if (!row.time_out) {
+    } else if (!row.time_out) {
       row.time_out = now;
       writeLocal('attendance', attendance);
     }
@@ -154,15 +185,19 @@ export async function recordTimeOut(seminarId, participant_email) {
   }
 }
 
-// Fetch attendance list for a seminar
 export async function fetchAttendance(seminarId) {
   try {
-    const attendance = readLocal('attendance');
-    const data = attendance.filter(a => a.seminar_id === seminarId).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-    return { data, error: null };
+    const response = await fetch(`${API_BASE_URL}/attendance/${seminarId}/`);
+    if (response.ok) {
+      const data = await response.json();
+      return { data, error: null };
+    }
   } catch (err) {
-    return { data: null, error: err };
+    console.warn('Backend fetch failed');
   }
+  const attendance = readLocal('attendance');
+  const data = attendance.filter(a => a.seminar_id === seminarId).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  return { data, error: null };
 }
 
 export async function deleteSeminar(id) {
@@ -183,17 +218,33 @@ export async function deleteSeminar(id) {
 export async function saveJoinedParticipant(seminarId, participant) {
   try {
     const payload = {
-      id: Date.now(),
-      seminar_id: seminarId,
+      seminar: seminarId,
       participant_email: participant.participant_email || null,
       participant_name: participant.participant_name || null,
       metadata: participant.metadata || null,
-      joined_at: new Date().toISOString(),
     };
+    
+    // Try backend first
+    try {
+      const response = await fetch(`${API_BASE_URL}/joined-participants/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return { data: [data], error: null };
+      }
+    } catch (err) {
+      console.warn('Backend save joined participant failed:', err);
+    }
+    
+    // Fallback to localStorage
     const list = readLocal('joined_participants');
-    list.push(payload);
+    const row = { id: Date.now(), ...payload, seminar_id: seminarId, joined_at: new Date().toISOString() };
+    list.push(row);
     writeLocal('joined_participants', list);
-    return { data: [payload], error: null };
+    return { data: [row], error: { message: 'Saved locally' } };
   } catch (err) {
     return { data: null, error: err };
   }
@@ -201,23 +252,34 @@ export async function saveJoinedParticipant(seminarId, participant) {
 
 export async function fetchJoinedParticipants(seminarId) {
   try {
-    const list = readLocal('joined_participants');
-    const data = list.filter(p => p.seminar_id === seminarId).sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
-    return { data, error: null };
+    const response = await fetch(`${API_BASE_URL}/joined-participants/${seminarId}/`);
+    if (response.ok) {
+      const data = await response.json();
+      return { data, error: null };
+    }
   } catch (err) {
-    return { data: null, error: err };
+    console.warn('Backend fetch failed');
   }
+  const list = readLocal('joined_participants');
+  const data = list.filter(p => p.seminar_id === seminarId).sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
+  return { data, error: null };
 }
 
 export async function fetchEvaluations(seminarId, participant_email) {
   try {
-    const list = readLocal('evaluations');
-    let data = list.filter(e => e.seminar_id === seminarId);
-    if (participant_email) data = data.filter(e => e.participant_email === participant_email);
-    return { data, error: null };
+    const response = await fetch(`${API_BASE_URL}/evaluations/${seminarId}/`);
+    if (response.ok) {
+      let data = await response.json();
+      if (participant_email) data = data.filter(e => e.participant_email === participant_email);
+      return { data, error: null };
+    }
   } catch (err) {
-    return { data: null, error: err };
+    console.warn('Backend fetch failed');
   }
+  const list = readLocal('evaluations');
+  let data = list.filter(e => e.seminar_id === seminarId);
+  if (participant_email) data = data.filter(e => e.participant_email === participant_email);
+  return { data, error: null };
 }
 
 export async function hasEvaluated(seminarId, participant_email) {
@@ -254,11 +316,29 @@ export async function uploadCertificateTemplate(seminarId, file) {
 
 export async function saveEvaluation(seminarId, participant_email, answers) {
   try {
-    const payload = { id: Date.now(), seminar_id: seminarId, participant_email, answers, created_at: new Date().toISOString() };
+    const payload = { seminar: seminarId, participant_email, answers };
+    
+    // Try backend first
+    try {
+      const response = await fetch(`${API_BASE_URL}/evaluations/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return { data: [data], error: null };
+      }
+    } catch (err) {
+      console.warn('Backend save evaluation failed:', err);
+    }
+    
+    // Fallback to localStorage
     const list = readLocal('evaluations');
-    list.push(payload);
+    const row = { id: Date.now(), ...payload, seminar_id: seminarId, created_at: new Date().toISOString() };
+    list.push(row);
     writeLocal('evaluations', list);
-    return { data: [payload], error: null };
+    return { data: [row], error: { message: 'Saved locally' } };
   } catch (err) {
     return { data: null, error: err };
   }
@@ -266,6 +346,24 @@ export async function saveEvaluation(seminarId, participant_email, answers) {
 
 export async function checkInParticipant(seminarId, participant_email) {
   try {
+    const payload = { seminar: seminarId, participant_email, time_in: new Date().toISOString() };
+    
+    // Try backend first
+    try {
+      const response = await fetch(`${API_BASE_URL}/attendance/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return { data: [data], error: null };
+      }
+    } catch (err) {
+      console.warn('Backend check-in failed:', err);
+    }
+    
+    // Fallback to localStorage
     const list = readLocal('joined_participants');
     const row = list.find(p => p.seminar_id === seminarId && p.participant_email === participant_email);
     if (row) {
@@ -282,6 +380,24 @@ export async function checkInParticipant(seminarId, participant_email) {
 
 export async function checkOutParticipant(seminarId, participant_email) {
   try {
+    const payload = { seminar: seminarId, participant_email, time_out: new Date().toISOString() };
+    
+    // Try backend first
+    try {
+      const response = await fetch(`${API_BASE_URL}/attendance/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return { data: [data], error: null };
+      }
+    } catch (err) {
+      console.warn('Backend check-out failed:', err);
+    }
+    
+    // Fallback to localStorage
     const list = readLocal('joined_participants');
     const row = list.find(p => p.seminar_id === seminarId && p.participant_email === participant_email);
     if (row) {
