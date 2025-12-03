@@ -365,14 +365,19 @@ export async function checkInParticipant(seminarId, participant_email) {
     
     // Fallback to localStorage
     const list = readLocal('joined_participants');
-    const row = list.find(p => p.seminar_id === seminarId && p.participant_email === participant_email);
+    let row = list.find(p => p.seminar_id === seminarId && p.participant_email === participant_email);
     if (row) {
       row.present = true;
       row.check_in = new Date().toISOString();
       writeLocal('joined_participants', list);
       return { data: [row], error: null };
     }
-    return { data: null, error: { message: 'Participant not found' } };
+
+    // If no joined_participants local record exists, create one so we can persist the check-in locally
+    const newRow = { id: Date.now(), seminar_id: seminarId, participant_email, participant_name: null, metadata: null, joined_at: new Date().toISOString(), present: true, check_in: new Date().toISOString(), check_out: null };
+    list.push(newRow);
+    writeLocal('joined_participants', list);
+    return { data: [newRow], error: null };
   } catch (err) {
     return { data: null, error: err };
   }
@@ -399,14 +404,20 @@ export async function checkOutParticipant(seminarId, participant_email) {
     
     // Fallback to localStorage
     const list = readLocal('joined_participants');
-    const row = list.find(p => p.seminar_id === seminarId && p.participant_email === participant_email);
+    let row = list.find(p => p.seminar_id === seminarId && p.participant_email === participant_email);
     if (row) {
       row.present = false;
       row.check_out = new Date().toISOString();
       writeLocal('joined_participants', list);
       return { data: [row], error: null };
     }
-    return { data: null, error: { message: 'Participant not found' } };
+
+    // If no local joined_participants record exists (e.g., the join was only saved on server or in joinedSeminars),
+    // create a local record so the time-out is preserved offline.
+    const newRow = { id: Date.now(), seminar_id: seminarId, participant_email, participant_name: null, metadata: null, joined_at: new Date().toISOString(), present: false, check_in: null, check_out: new Date().toISOString() };
+    list.push(newRow);
+    writeLocal('joined_participants', list);
+    return { data: [newRow], error: null };
   } catch (err) {
     return { data: null, error: err };
   }

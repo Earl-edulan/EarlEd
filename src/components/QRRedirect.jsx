@@ -80,27 +80,27 @@ export default function QRRedirect() {
           return;
         }
 
-        // If already has time_in and no time_out, record time OUT - this is CHECK OUT
+        // If already has time_in and no time_out, record time OUT - this is TIME OUT
         const outRes = await recordTimeOut(payload.seminar_id, payload.participant_email);
         
         if (outRes.error) {
           console.error('Time OUT error:', outRes.error);
           setStatus('error');
-          setMessage('❌ Error recording checkout. Please try again.');
+          setMessage('❌ Error recording time out. Please try again.');
           return;
         }
 
-        const checkOutTime = new Date().toLocaleTimeString('en-US', { 
+        const timeOutTime = new Date().toLocaleTimeString('en-US', { 
           hour: '2-digit', 
           minute: '2-digit',
           second: '2-digit'
         });
         setStatus('success');
-        setMessage(`✅ Checked OUT`);
+        setMessage(`✅ Time OUT`);
         setResult({
           type: 'out',
           email: payload.participant_email,
-          time: checkOutTime,
+          time: timeOutTime,
           seminarId: payload.seminar_id
         });
 
@@ -200,7 +200,7 @@ export default function QRRedirect() {
                   color: '#1a3a52',
                   fontSize: '14px'
                 }}>
-                  <strong>Status:</strong> {result.type === 'in' ? 'Checked IN' : 'Checked OUT'}
+                  <strong>Status:</strong> {result.type === 'in' ? 'Checked IN' : 'Timed Out'}
                 </p>
                 <p style={{
                   margin: '8px 0',

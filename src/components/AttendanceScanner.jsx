@@ -110,10 +110,10 @@ const location = useLocation();
     const outRes = await recordTimeOut(payload.seminar_id, payload.participant_email);
     if (outRes.error) {
       console.error(outRes.error);
-      setMessage("Error recording attendance OUT.");
+      setMessage("Error recording time out.");
       return;
     }
-    setMessage(`✅ ${payload.participant_email} checked OUT at ${new Date().toLocaleTimeString()}`);
+    setMessage(`✅ ${payload.participant_email} timed out at ${new Date().toLocaleTimeString()}`);
     if (typeof onSuccess === 'function') {
       try { onSuccess({ seminarId: payload.seminar_id, participantEmail: payload.participant_email, out: true }); } catch (e) {}
     }
@@ -189,10 +189,10 @@ const location = useLocation();
     }
     const outRes = await recordTimeOut(manualSeminarId, manualEmail);
     if (outRes.error) {
-      setMessage("Error recording OUT (manual).");
+      setMessage("Error recording time out (manual).");
       return;
     }
-    setMessage(`✅ ${manualEmail} checked OUT (manual).`);
+    setMessage(`✅ ${manualEmail} timed out (manual).`);
     if (typeof onSuccess === 'function') {
       try { onSuccess({ seminarId: manualSeminarId, participantEmail: manualEmail, out: true }); } catch (e) {}
     }
@@ -231,7 +231,7 @@ const location = useLocation();
           <input placeholder="seminar id" value={manualSeminarId} onChange={(e) => setManualSeminarId(e.target.value)} style={{ padding: '0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
           <input placeholder="participant email" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} style={{ padding: '0.6rem', borderRadius: 8, border: '1px solid #ddd' }} />
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={manualCheckInOut} style={{ padding: '0.6rem 1rem', background: '#007bff', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Check In / Out</button>
+            <button onClick={manualCheckInOut} style={{ padding: '0.6rem 1rem', background: '#007bff', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Check In / Time Out</button>
             <button onClick={() => { setManualSeminarId(propSeminarId || ''); setManualEmail(propParticipantEmail || ''); }} style={{ padding: '0.6rem 1rem', background: '#f5f5f5', color: '#333', border: '1px solid #ddd', borderRadius: 8, cursor: 'pointer' }}>Fill From Context</button>
           </div>
         </div>

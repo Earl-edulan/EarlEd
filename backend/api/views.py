@@ -64,6 +64,22 @@ def attendance(request, seminar_id=None):
 
     # POST -> create attendance record
     if request.method == 'POST':
+        # If an attendance row for this seminar+participant already exists, update it (time_in/time_out)
+        seminar_id = request.data.get('seminar')
+        participant_email = request.data.get('participant_email')
+        if seminar_id and participant_email:
+            try:
+                existing = Attendance.objects.filter(seminar_id=seminar_id, participant_email=participant_email).first()
+            except Exception:
+                existing = None
+            if existing:
+                serializer = AttendanceSerializer(existing, data=request.data, partial=True)
+                if serializer.is_valid():
+                    serializer.save()
+                    return Response(serializer.data)
+                return Response({'error': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        # No existing row — create a new attendance record
         serializer = AttendanceSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()

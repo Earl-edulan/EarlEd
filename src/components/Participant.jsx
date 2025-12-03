@@ -5,7 +5,7 @@ import "../App.css";
 import Evaluation from "./Evalution.jsx";
 import AttendanceScanner from "./AttendanceScanner.jsx";
 import ParticipantQRCode from "./ParticipantQRCode.jsx";
-import { fetchSeminars as dbFetchSeminars, saveJoinedParticipant, checkInParticipant } from "../lib/db";
+import { fetchSeminars as dbFetchSeminars, saveJoinedParticipant, checkInParticipant, checkOutParticipant } from "../lib/db";
 import HamburgerToggle from './HamburgerToggle';
 
 function ParticipantDashboard({ onLogout }) {
@@ -180,6 +180,26 @@ function ParticipantDashboard({ onLogout }) {
     setJoinedSeminars(updated);
     localStorage.setItem("joinedSeminars", JSON.stringify(updated));
   };
+
+  const handleTimeOut = async (seminar) => {
+    try {
+      const seminarId = seminar.id || null;
+      const participant_email = localStorage.getItem('participantEmail') || localStorage.getItem('userEmail') || 'participant@example.com';
+      const res = await checkOutParticipant(seminarId, participant_email);
+      if (res.error) {
+        console.warn('Failed to persist time-out:', res.error);
+        window.dispatchEvent(new CustomEvent('app-banner', { detail: 'Time-out recorded locally but failed to persist.' }));
+      } else {
+        // update local joinedSeminars record to mark timed out
+        const updated = joinedSeminars.map(s => s.id === seminar.id ? { ...s, checkedOut: true, check_out: new Date().toISOString() } : s);
+        setJoinedSeminars(updated);
+        localStorage.setItem('joinedSeminars', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('app-banner', { detail: 'Time-out recorded.' }));
+      }
+    } catch (err) {
+      console.warn('Unexpected error while recording time-out for participant:', err);
+    }
+  }
 
   // Generate certificate with professional design using PNG images
   const generateCertificate = async (seminar) => {
@@ -579,17 +599,51 @@ function ParticipantDashboard({ onLogout }) {
 
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "1rem" }}>
                       {s.completed ? (
-                        <div style={{
-                          padding: "0.75rem",
-                          backgroundColor: "#e8f5e9",
-                          border: "1px solid #c8e6c9",
-                          borderRadius: "8px",
-                          textAlign: "center",
-                          color: "#27ae60",
-                          fontSize: "0.9rem",
-                          fontWeight: "600"
-                        }}>
-                          Attendance Marked
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <div style={{
+                            padding: "0.75rem",
+                            backgroundColor: "#e8f5e9",
+                            border: "1px solid #c8e6c9",
+                            borderRadius: "8px",
+                            textAlign: "center",
+                            color: "#27ae60",
+                            fontSize: "0.9rem",
+                            fontWeight: "600"
+                          }}>
+                            Attendance Marked
+                          </div>
+                          {s.checkedOut ? (
+                            <div style={{
+                              padding: "0.6rem 0.8rem",
+                              backgroundColor: "#fff3e0",
+                              border: "1px solid #ffe0b2",
+                              borderRadius: "8px",
+                              color: "#f57c00",
+                              fontSize: "0.9rem",
+                              fontWeight: "600"
+                            }}>
+                              Timed out{s.check_out ? ` — ${new Date(s.check_out).toLocaleTimeString()}` : ''}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleTimeOut(s)}
+                              style={{
+                                padding: "0.6rem 0.9rem",
+                                backgroundColor: "#ff8a00",
+                                color: "white",
+                                border: "none",
+                                borderRadius: "8px",
+                                fontSize: "0.95rem",
+                                fontWeight: "600",
+                                cursor: "pointer",
+                                transition: "all 0.2s"
+                              }}
+                              onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#e67600'; }}
+                              onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#ff8a00'; }}
+                            >
+                              Time Out
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <>
