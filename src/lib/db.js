@@ -259,8 +259,17 @@ export async function fetchEvaluations(seminarId, participant_email) {
 
 export async function hasEvaluated(seminarId, participant_email) {
   try {
-    const list = readLocal('evaluations');
     if (!participant_email) participant_email = localStorage.getItem('participantEmail') || localStorage.getItem('userEmail') || 'participant@example.com';
+    
+    // Check backend first
+    const res = await safeFetch(`${API_BASE_URL}/evaluations/${seminarId}/`);
+    if (res.ok && res.data) {
+      const found = res.data.find(e => e.participant_email === participant_email);
+      if (found) return { evaluated: true, error: null };
+    }
+    
+    // Fallback to local storage
+    const list = readLocal('evaluations');
     const found = list.find(e => e.seminar_id === seminarId && e.participant_email === participant_email);
     return { evaluated: !!found, error: null };
   } catch (err) {

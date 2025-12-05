@@ -71,19 +71,26 @@ function Evaluation() {
     const participant_email = localStorage.getItem('participantEmail') || 'participant@example.com';
     const completedEvalsKey = `completedEvaluations_${participant_email}`;
 
-    // Prevent duplicate evaluation: check localStorage first
+    // Prevent duplicate evaluation: use seminar ID to avoid title mismatches
     const completedEvaluations = JSON.parse(localStorage.getItem(completedEvalsKey) || "[]");
-    if (completedEvaluations.includes(selectedSeminar.title)) {
+    const seminarId = selectedSeminar?.id || null;
+    if (seminarId && completedEvaluations.includes(seminarId)) {
       window.dispatchEvent(new CustomEvent('app-banner', { detail: 'You have already submitted an evaluation for this seminar.' }));
       return;
     }
 
     // Also check DB to be safe
     try {
-      const seminarId = selectedSeminar.id || null;
       const res = await fetchEvaluations(seminarId, participant_email);
       if (res && res.data && res.data.length > 0) {
+        // Evaluation exists on backend; mark as completed locally by ID and refresh UI
+        if (seminarId && !completedEvaluations.includes(seminarId)) {
+          completedEvaluations.push(seminarId);
+          localStorage.setItem(completedEvalsKey, JSON.stringify(completedEvaluations));
+        }
         window.dispatchEvent(new CustomEvent('app-banner', { detail: 'You have already submitted an evaluation for this seminar.' }));
+        // Dispatch storage change event so parent components refresh
+        window.dispatchEvent(new StorageEvent('storage', { key: completedEvalsKey, newValue: JSON.stringify(completedEvaluations) }));
         return;
       }
     } catch (err) {
@@ -93,30 +100,35 @@ function Evaluation() {
     window.dispatchEvent(new CustomEvent('app-banner', { detail: "Evaluation submitted successfully!" }));
     const allEvaluations = JSON.parse(localStorage.getItem("evaluations") || "{}");
 
-    // Save evaluation answers locally
+    // Save evaluation answers locally (keep title mapping for backward compatibility)
     allEvaluations[selectedSeminar.title] = answers;
     localStorage.setItem("evaluations", JSON.stringify(allEvaluations));
 
-    // Track that evaluation is completed for this seminar locally
-    if (!completedEvaluations.includes(selectedSeminar.title)) {
-      completedEvaluations.push(selectedSeminar.title);
+    // Track that evaluation is completed for this seminar locally by ID
+    if (seminarId && !completedEvaluations.includes(seminarId)) {
+      completedEvaluations.push(seminarId);
     }
     localStorage.setItem(completedEvalsKey, JSON.stringify(completedEvaluations));
 
-    // Try to persist evaluation to Supabase
+    // Persist evaluation to backend (server-first approach)
     try {
-      const seminarId = selectedSeminar.id || null;
       const res = await saveEvaluation(seminarId, participant_email, answers);
       if (res.error) {
-        console.warn('Failed to save evaluation to Supabase:', res.error);
-        window.dispatchEvent(new CustomEvent('app-banner', { detail: 'Evaluation saved locally but failed to persist to Supabase.' }));
+        console.warn('Failed to save evaluation to backend:', res.error);
+        window.dispatchEvent(new CustomEvent('app-banner', { detail: 'Evaluation saved locally but failed to sync to server.' }));
       } else {
-        console.log('Evaluation saved to Supabase:', res.data);
+        console.log('Evaluation saved to backend:', res.data);
+        window.dispatchEvent(new CustomEvent('app-banner', { detail: 'Evaluation submitted and synced successfully!' }));
       }
     } catch (err) {
       console.warn('Unexpected error saving evaluation:', err);
-      window.dispatchEvent(new CustomEvent('app-banner', { detail: 'Evaluation saved locally but unexpected error when saving to Supabase.' }));
+      window.dispatchEvent(new CustomEvent('app-banner', { detail: 'Evaluation saved locally but unexpected error when syncing to server.' }));
     }
+
+    // Dispatch storage change event so parent components (like Participant.jsx) refresh their state
+    window.dispatchEvent(new StorageEvent('storage', { key: completedEvalsKey, newValue: JSON.stringify(completedEvaluations) }));
+    // Also dispatch a custom event for real-time updates (storage event may not fire in same tab)
+    window.dispatchEvent(new CustomEvent('custom-storage-update', { detail: { key: completedEvalsKey, value: completedEvaluations } }));
 
     setSelectedSeminar(null);
     setAnswers({});

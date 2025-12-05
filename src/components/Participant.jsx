@@ -5,7 +5,7 @@ import "../App.css";
 import Evaluation from "./Evalution.jsx";
 import AttendanceScanner from "./AttendanceScanner.jsx";
 import ParticipantQRCode from "./ParticipantQRCode.jsx";
-import { fetchSeminars as dbFetchSeminars, saveJoinedParticipant, checkInParticipant, checkOutParticipant } from "../lib/db";
+import { fetchSeminars as dbFetchSeminars, saveJoinedParticipant, checkInParticipant, checkOutParticipant, hasEvaluated } from "../lib/db";
 import HamburgerToggle from './HamburgerToggle';
 
 function ParticipantDashboard({ onLogout }) {
@@ -15,7 +15,7 @@ function ParticipantDashboard({ onLogout }) {
   const [completedEvaluations, setCompletedEvaluations] = useState([]);
   const [showSidebar, setShowSidebar] = useState(false);
 
-  // 🧾 Load seminars and joined status (prefer Supabase, fallback to localStorage)
+  // 🧾 Load seminars and joined status (prefer server, fallback to localStorage)
   useEffect(() => {
     let mounted = true;
 
@@ -40,42 +40,110 @@ function ParticipantDashboard({ onLogout }) {
         if (mounted) setAvailableSeminars(storedSeminars);
       }
 
-      const storedJoined = JSON.parse(localStorage.getItem(joinedSeminarsKey)) || [];
-      const storedCompletedEvals = JSON.parse(localStorage.getItem(completedEvalsKey)) || [];
+     let storedJoined = JSON.parse(localStorage.getItem(joinedSeminarsKey)) || [];
+// Normalize joinedSeminars: ensure each entry includes `id` (may be stored as `seminar_id` or only title)
+if (Array.isArray(storedJoined) && storedJoined.length > 0) {
+  const seminars = JSON.parse(localStorage.getItem('seminars')) || [];
+  storedJoined = storedJoined.map(j => {
+    const copy = { ...j };
+    if (!copy.id && copy.seminar_id) copy.id = copy.seminar_id;
+    if (!copy.id && copy.seminar) copy.id = copy.seminar;
+    if (!copy.id && copy.title) {
+      const matched = seminars.find(s => s.title === copy.title);
+      if (matched) copy.id = matched.id;
+    }
+    return copy;
+  });
+  // Persist normalized joinedSeminars so other code reads consistent shape
+  localStorage.setItem(joinedSeminarsKey, JSON.stringify(storedJoined));
+}
+      let storedCompletedEvals = JSON.parse(localStorage.getItem(completedEvalsKey)) || [];
+      // Normalize completed evaluations: support legacy title-based entries
+      if (storedCompletedEvals.length > 0 && typeof storedCompletedEvals[0] === 'string') {
+        const seminars = JSON.parse(localStorage.getItem('seminars')) || [];
+        storedCompletedEvals = storedCompletedEvals.map(t => {
+          const found = seminars.find(s => s.title === t);
+          return found ? found.id : null;
+        }).filter(Boolean);
+      }
       if (mounted) {
         setJoinedSeminars(storedJoined);
         setCompletedEvaluations(storedCompletedEvals);
+
+        // Sync evaluation status from backend for any joined seminars that may not be tracked locally
+        (async () => {
+          try {
+            const participant_email = localStorage.getItem('participantEmail') || localStorage.getItem('userEmail') || 'participant@example.com';
+            let updated = Array.isArray(storedCompletedEvals) ? [...storedCompletedEvals] : [];
+            for (const js of storedJoined) {
+              const sid = js.id || js.seminar || null;
+              if (sid && !updated.includes(sid)) {
+                const res = await hasEvaluated(sid, participant_email);
+                if (res && res.evaluated) {
+                  updated.push(sid);
+                }
+              }
+            }
+            if (updated.length !== (storedCompletedEvals || []).length) {
+              localStorage.setItem(completedEvalsKey, JSON.stringify(updated));
+              setCompletedEvaluations(updated);
+            }
+          } catch (err) {
+            console.warn('Error syncing evaluation state from server:', err);
+          }
+        })();
       }
     }
 
     load();
 
-    const handleStorageChange = () => {
+    // Listen to both storage events and custom app events
+    const handleStorageChange = (e) => {
       const participant_email = localStorage.getItem('participantEmail') || localStorage.getItem('userEmail') || 'participant@example.com';
       const joinedSeminarsKey = `joinedSeminars_${participant_email}`;
       const completedEvalsKey = `completedEvaluations_${participant_email}`;
-      setAvailableSeminars(JSON.parse(localStorage.getItem("seminars")) || []);
-      setJoinedSeminars(JSON.parse(localStorage.getItem(joinedSeminarsKey)) || []);
-      setCompletedEvaluations(JSON.parse(localStorage.getItem(completedEvalsKey)) || []);
+      
+      if (e && e.key && e.key !== completedEvalsKey && e.key !== joinedSeminarsKey && e.key !== 'seminars') {
+        return; // ignore other keys
+      }
+      
+      if (mounted) {
+        setAvailableSeminars(JSON.parse(localStorage.getItem("seminars")) || []);
+        setJoinedSeminars(JSON.parse(localStorage.getItem(joinedSeminarsKey)) || []);
+        // Normalize any title-based completed evals to IDs
+        let updatedCompleted = JSON.parse(localStorage.getItem(completedEvalsKey)) || [];
+        if (updatedCompleted.length > 0 && typeof updatedCompleted[0] === 'string') {
+          const seminars = JSON.parse(localStorage.getItem('seminars')) || [];
+          updatedCompleted = updatedCompleted.map(t => {
+            const found = seminars.find(s => s.title === t);
+            return found ? found.id : null;
+          }).filter(Boolean);
+        }
+        setCompletedEvaluations(updatedCompleted);
+      }
     };
+    
     window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("custom-storage-update", handleStorageChange); // custom event from evaluations
+    
     return () => {
       mounted = false;
       window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("custom-storage-update", handleStorageChange);
     };
   }, []);
 
   // 🧾 Check if certificate is eligible (both attendance marked AND evaluation completed)
   const isCertificateEligible = (seminar) => {
     const hasAttendance = seminar.completed === true;
-    const hasEvaluation = completedEvaluations.includes(seminar.title);
+    const hasEvaluation = completedEvaluations.includes(seminar.id);
     return hasAttendance && hasEvaluation;
   };
 
   // 📊 Get eligibility status for display
   const getCertificateStatus = (seminar) => {
     const hasAttendance = seminar.completed === true;
-    const hasEvaluation = completedEvaluations.includes(seminar.title);
+    const hasEvaluation = completedEvaluations.includes(seminar.id);
     
     if (!hasAttendance && !hasEvaluation) {
       return { status: "pending", message: "Attendance & Evaluation Pending", icon: "⏳" };
@@ -121,11 +189,13 @@ function ParticipantDashboard({ onLogout }) {
 
   const handleMarkAttendance = async (title) => {
     // legacy support: direct mark (not used when scanner flow is enforced)
+    const participant_email = localStorage.getItem('participantEmail') || localStorage.getItem('userEmail') || 'participant@example.com';
+    const joinedSeminarsKey = `joinedSeminars_${participant_email}`;
     const updated = joinedSeminars.map((s) =>
       s.title === title ? { ...s, completed: true } : s
     );
     setJoinedSeminars(updated);
-    localStorage.setItem("joinedSeminars", JSON.stringify(updated));
+    localStorage.setItem(joinedSeminarsKey, JSON.stringify(updated));
 
     try {
       const seminar = joinedSeminars.find((s) => s.title === title);
@@ -748,7 +818,7 @@ function ParticipantDashboard({ onLogout }) {
                 {joinedSeminars.map((s, i) => {
                   const eligible = isCertificateEligible(s);
                   const hasAttendance = s.completed === true;
-                  const hasEvaluation = completedEvaluations.includes(s.title);
+                  const hasEvaluation = completedEvaluations.includes(s.id);
                   
                   return (
                     <div className="certificate-card" key={i} style={{ position: "relative" }}>
